@@ -89,10 +89,10 @@ with aba_mercado:
                 "IFR": f"{ifr:.1f}", "Status": sinal, "Stop": f"{cifr} {stop_exibido}" if stop_exibido != "-" else "-"
             })
             
-    df_painel = pd.DataFrame(lista_tabela)
+       df_painel = pd.DataFrame(lista_tabela)
     def colorir_sinal(val):
         if "COMPRA ATIVA" in val: return 'background-color: #2e4620; color: white; font-weight: bold;'
         if "VENDA ATIVA" in val: return 'background-color: #5c1d1d; color: white; font-weight: bold;'
         if "EXAUSTÃO" in val: return 'background-color: #7d6608; color: #fec107; font-weight: bold;'
         return 'color: gray;'
-   st.dataframe(df_painel.style.map(colorir_sinal, subset=['Status']), use_container_width=True, hide_index=True)
+    st.dataframe(df_painel.style.map(colorir_sinal, subset=['Status']), use_container_width=True, hide_index=True)
