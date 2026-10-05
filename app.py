@@ -12,7 +12,7 @@ st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="c
 # Força o fuso horário de Brasília para sincronizar com o computador
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v15.0")
+st.markdown("### 📡 Radar Multimercados v15.1")
 st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
 # Abas e Perfil Operacional táteis
@@ -136,7 +136,6 @@ with aba_mercado:
     if not df_all_diario.empty and not df_all_intra.empty:
         for nome, ticker in ativos.items():
             try:
-                # Extração segura de dados mesmo em tabelas multi-index
                 if len(lista_tickers) > 1:
                     df_d_ativo = pd.DataFrame()
                     df_d_ativo['High'] = df_all_diario['High'][ticker]
@@ -195,5 +194,5 @@ with aba_mercado:
                             
                         cifr = "R$" if nome in ['Dólar', 'Ibovespa', 'Petrobras', 'Vale'] else "US$"
                         
+                        # Correção da Sintaxe: Parêntese fechado perfeitamente no append
                         lista_tabela.append({
-
