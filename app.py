@@ -12,7 +12,7 @@ st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="c
 # Força o fuso horário de Brasília para sincronizar com o computador
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v23.0")
+st.markdown("### 📡 Radar Multimercados v23.5")
 st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
 perfil = st.radio("Selecione o Perfil:", ('Day Trade (5m)', 'Swing Trade (15m)'), horizontal=True)
@@ -96,7 +96,7 @@ with aba_mercado:
                 if 'Close' in df_g_hoje.columns and tk in df_g_hoje['Close'].columns:
                     serie_preco = df_g_hoje['Close'][tk].dropna()
                     if not serie_preco.empty:
-                        preco_ini = float(serie_preco.iloc[0])
+                        preco_ini = float(serie_preco.iloc)
                         variacoes = ((serie_preco - preco_ini) / preco_ini) * 100
                         nome_ativo = map_tickers[tk]
                         fig.add_trace(go.Scatter(
@@ -124,9 +124,8 @@ with aba_mercado:
             if df_intra.empty or df_diario.empty:
                 continue
             
-            # 🛡️ LINHA CRÍTICA: Achata cabeçalhos duplos caso o Yahoo Finance force Multi-index
-            if isinstance(df_intra.columns, pd.MultiIndex): df_intra.columns = [c[0] for c in df_intra.columns]
-            if isinstance(df_diario.columns, pd.MultiIndex): df_diario.columns = [c[0] for c in df_diario.columns]
+            if isinstance(df_intra.columns, pd.MultiIndex): df_intra.columns = [c for c in df_intra.columns]
+            if isinstance(df_diario.columns, pd.MultiIndex): df_diario.columns = [c for c in df_diario.columns]
                 
             df_intra = df_intra.dropna(subset=['Close'])
             df_diario = df_diario.dropna(subset=['High', 'Low', 'Close'])
@@ -179,6 +178,8 @@ with aba_mercado:
             vies_val = row['Viés Pivô']
             if "COMPRA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #2e4620; color: white; font-weight: bold;'
             elif "VENDA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #5c1d1d; color: white; font-weight: bold;'
-            elif "EXAUSTÃO" in status_val: styles[styles[df_painel.columns.get_loc('Status / Sinal')]] = 'background-color: #7d6608; color: #fec107; font-weight: bold;'
+            elif "EXAUSTÃO" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #7d6608; color: #fec107; font-weight: bold;'
             elif "BLOQUEADO" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #4a3e1b; color: #ffeb3b; font-weight: bold;'
             if "ACIMA" in vies_val: styles[df_painel.columns.get_loc('Viés Pivô')] = 'color: #4caf50; font-weight: bold;'
+            elif "ABAIXO" in vies_val: styles[df_painel.columns.get_loc('Viés Pivô')] = 'color: #f44336; font-weight: bold;'
+            return styles
