@@ -12,7 +12,7 @@ st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="c
 # Força o fuso horário de Brasília para sincronizar com o computador
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v13.0")
+st.markdown("### 📡 Radar Multimercados v13.5")
 st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
 # Abas e Perfil Operacional táteis
@@ -21,11 +21,9 @@ perfil = st.radio("Selecione o Perfil:", ('Day Trade (5m)', 'Swing Trade (15m)')
 if 'Day Trade' in perfil:
     tempo_grafico = '5m'
     janela_stop = 12
-    periodo_intra = '1d'
 else:
     tempo_grafico = '15m'
     janela_stop = 32
-    periodo_intra = '5d'
 
 ativos = {
     'Nasdaq 100': 'NQ=F', 'S&P 500': 'ES=F', 'Dow Jones': 'YM=F',
@@ -85,7 +83,8 @@ with aba_mercado:
     # 🔄 Captura e tratamento simultâneo para a tabela e o gráfico de comparação
     for nome, ticker in ativos.items():
         dados_diarios = yf.download(tickers=ticker, period='3d', interval='1d', progress=False)
-        dados_intra = yf.download(tickers=ticker, period=periodo_intra, interval=tempo_grafico, progress=False)
+        # Força o download de 6 dias para garantir histórico mínimo de candles para as médias
+        dados_intra = yf.download(tickers=ticker, period='6d', interval=tempo_grafico, progress=False)
         
         if not dados_diarios.empty and len(dados_diarios) >= 2 and not dados_intra.empty and len(dados_intra) >= 20:
             high_raw = dados_diarios['High'].to_numpy().flatten()
@@ -103,9 +102,8 @@ with aba_mercado:
             fechamentos_intra = dados_intra['Close'].to_numpy().flatten()
             ultimo_fechamento = float(fechamentos_intra[-1])
             
-            # Guarda dados apenas dos índices para montar o gráfico comparativo limpo
+            # Filtra apenas os três índices principais para gerar as linhas percentuais do gráfico
             if nome in ['Dow Jones', 'S&P 500', 'Nasdaq 100']:
-                # Calcula variação percentual desde o primeiro candle mapeado no dia
                 preco_inicial = float(fechamentos_intra[0])
                 dados_grafico[nome] = {
                     'tempos': dados_intra.index,
@@ -158,7 +156,6 @@ with aba_mercado:
                 line=dict(color=cores_linhas.get(nome_ativo, '#FFFFFF'), width=2)
             ))
             
-        # Linha do Pivô Central / Ponto Zero estática de referência
         fig.add_hline(y=0.0, line_dash="dash", line_color="#888888", annotation_text="Eixo do Pivô", annotation_position="top left")
         
         fig.update_layout(
