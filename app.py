@@ -12,7 +12,7 @@ st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="c
 # Força o fuso horário de Brasília para sincronizar com o computador
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v23.5")
+st.markdown("### 📡 Radar Multimercados v24.0")
 st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
 perfil = st.radio("Selecione o Perfil:", ('Day Trade (5m)', 'Swing Trade (15m)'), horizontal=True)
@@ -70,7 +70,7 @@ with aba_mercado:
     else:
         st.success("🛡️ **Varredura Total Liberada:** Sem notícias impactantes travando a grade agora.")
 
-    # --- 📈 1. RENDERIZAÇÃO DO GRÁFICO UNIFICADO ---
+    # --- 📈 1. GRÁFICO UNIFICADO ---
     tickers_grafico = ['NQ=F', 'ES=F', 'YM=F']
     df_grafico_all = yf.download(tickers=tickers_grafico, period='5d', interval=tempo_grafico, progress=False)
     
@@ -95,15 +95,16 @@ with aba_mercado:
             for tk in tickers_grafico:
                 if 'Close' in df_g_hoje.columns and tk in df_g_hoje['Close'].columns:
                     serie_preco = df_g_hoje['Close'][tk].dropna()
-                    if not serie_preco.empty:
-                        preco_ini = float(serie_preco.iloc)
-                        variacoes = ((serie_preco - preco_ini) / preco_ini) * 100
-                        nome_ativo = map_tickers[tk]
-                        fig.add_trace(go.Scatter(
-                            x=list(tempos_formatados[-len(variacoes):]), y=list(variacoes),
-                            mode='lines', name=nome_ativo,
-                            line=dict(color=cores_linhas[nome_ativo], width=2.5)
-                        ))
+                    if not serie_preco.empty and len(serie_preco) > 0:
+                        preco_ini = float(serie_preco.iloc[0])
+                        if preco_ini > 0:
+                            variacoes = ((serie_preco - preco_ini) / preco_ini) * 100
+                            nome_ativo = map_tickers[tk]
+                            fig.add_trace(go.Scatter(
+                                x=list(tempos_formatados[-len(variacoes):]), y=list(variacoes),
+                                mode='lines', name=nome_ativo,
+                                line=dict(color=cores_linhas[nome_ativo], width=2.5)
+                            ))
             
             fig.add_hline(y=0.0, line_dash="dash", line_color="#888888", annotation_text="Eixo do Pivô", annotation_position="bottom left")
             fig.update_layout(
@@ -113,7 +114,7 @@ with aba_mercado:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    # --- 📊 2. MOTORS DA TABELA COM TRATAMENTO DE MULTI-INDEX ---
+    # --- 📊 2. MONTAGEM DA TABELA DE SINAIS ---
     lista_tabela = []
     
     for nome, ticker in ativos.items():
@@ -124,8 +125,8 @@ with aba_mercado:
             if df_intra.empty or df_diario.empty:
                 continue
             
-            if isinstance(df_intra.columns, pd.MultiIndex): df_intra.columns = [c for c in df_intra.columns]
-            if isinstance(df_diario.columns, pd.MultiIndex): df_diario.columns = [c for c in df_diario.columns]
+            if isinstance(df_intra.columns, pd.MultiIndex): df_intra.columns = [c[0] for c in df_intra.columns]
+            if isinstance(df_diario.columns, pd.MultiIndex): df_diario.columns = [c[0] for c in df_diario.columns]
                 
             df_intra = df_intra.dropna(subset=['Close'])
             df_diario = df_diario.dropna(subset=['High', 'Low', 'Close'])
@@ -181,5 +182,3 @@ with aba_mercado:
             elif "EXAUSTÃO" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #7d6608; color: #fec107; font-weight: bold;'
             elif "BLOQUEADO" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #4a3e1b; color: #ffeb3b; font-weight: bold;'
             if "ACIMA" in vies_val: styles[df_painel.columns.get_loc('Viés Pivô')] = 'color: #4caf50; font-weight: bold;'
-            elif "ABAIXO" in vies_val: styles[df_painel.columns.get_loc('Viés Pivô')] = 'color: #f44336; font-weight: bold;'
-            return styles
