@@ -12,7 +12,7 @@ st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="c
 # Força o fuso horário de Brasília para sincronizar com o computador
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v15.1")
+st.markdown("### 📡 Radar Multimercados v15.2")
 st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
 # Abas e Perfil Operacional táteis
@@ -194,5 +194,6 @@ with aba_mercado:
                             
                         cifr = "R$" if nome in ['Dólar', 'Ibovespa', 'Petrobras', 'Vale'] else "US$"
                         
-                        # Correção da Sintaxe: Parêntese fechado perfeitamente no append
-                        lista_tabela.append({
+                        # Estrutura isolada de dicionário limpo para evitar conflitos de colagem
+                        dados_linha = {
+                            "Ativo": nome, 
