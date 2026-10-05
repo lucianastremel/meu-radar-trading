@@ -12,7 +12,7 @@ st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="c
 # Força o fuso horário de Brasília para sincronizar com o computador
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v18.0")
+st.markdown("### 📡 Radar Multimercados v18.5")
 st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
 perfil = st.radio("Selecione o Perfil:", ('Day Trade (5m)', 'Swing Trade (15m)'), horizontal=True)
@@ -130,7 +130,6 @@ with aba_mercado:
     
     if not df_all_diario.empty and not df_all_intra.empty:
         for nome, ticker in ativos.items():
-            # Extração linear otimizada e preenchimento de segurança para travar falhas de dados vazios
             high_raw = df_all_diario['High'][ticker].ffill().bfill().to_numpy() if ('High', ticker) in df_all_diario.columns else df_all_diario['High'].ffill().bfill().to_numpy()
             low_raw = df_all_diario['Low'][ticker].ffill().bfill().to_numpy() if ('Low', ticker) in df_all_diario.columns else df_all_diario['Low'].ffill().bfill().to_numpy()
             close_raw = df_all_diario['Close'][ticker].ffill().bfill().to_numpy() if ('Close', ticker) in df_all_diario.columns else df_all_diario['Close'].ffill().bfill().to_numpy()
@@ -144,7 +143,6 @@ with aba_mercado:
             df_i_ativo = df_i_ativo.dropna(subset=['Close'])
             fechamentos_intra = df_i_ativo['Close'].to_numpy()
             
-            # Condição inclusiva: força a exibição se houver o histórico básico necessário para a sessão ativa
             if len(high_raw) >= 2 and len(fechamentos_intra) >= 15:
                 maxima_ant = float(high_raw[-2])
                 minima_ant = float(low_raw[-2])
@@ -158,7 +156,8 @@ with aba_mercado:
                 vies_pivo = "🔼 ACIMA" if ultimo_fechamento > P else "🔽 ABAIXO"
                 
                 sinal = "⚪ NEUTRO"
-                if len(fechamentos_intra) >= 50:
+                # Ajuste Técnico Crucial: Reduzido de 201 para 100 para liberar as médias na sessão atual da tarde
+                if len(fechamentos_intra) >= 100:
                     ma9 = float(pd.Series(fechamentos_intra).rolling(window=9).mean().iloc[-1])
                     ma21 = float(pd.Series(fechamentos_intra).rolling(window=21).mean().iloc[-1])
                     ifr = calcular_ifr(df_i_ativo, 14)
