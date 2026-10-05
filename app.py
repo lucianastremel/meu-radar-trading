@@ -3,12 +3,16 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import pytz
 
 # Configuração mobile-first para o iPhone
 st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="centered")
 
-st.markdown("### 📡 Radar Multimercados v11.5")
-st.write(f"Última atualização: {datetime.now().strftime('%H:%M:%S')}")
+# Força o fuso horário de Brasília para sincronizar com o computador
+fuso_br = pytz.timezone('America/Sao_Paulo')
+
+st.markdown("### 📡 Radar Multimercados v12.0")
+st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
 # Abas e Perfil Operacional táteis
 perfil = st.radio("Selecione o Perfil:", ('Day Trade (5m)', 'Swing Trade (15m)'), horizontal=True)
@@ -55,7 +59,7 @@ def calcular_ifr(df, periods=14):
     return float(100 - (100 / (1 + (avg_gain / avg_loss))))
 
 def checar_trava_noticias():
-    agora_str = datetime.now().strftime("%H:%M")
+    agora_str = datetime.now(fuso_br).strftime("%H:%M")
     agora_dt = datetime.strptime(agora_str, "%H:%M")
     for noticia in NOTICIAS_DO_DIA:
         inicio_dt = datetime.strptime(noticia["inicio"], "%H:%M")
