@@ -12,7 +12,7 @@ st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="c
 # Força o fuso horário de Brasília para sincronizar com o computador
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v15.2")
+st.markdown("### 📡 Radar Multimercados v16.0")
 st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
 # Abas e Perfil Operacional táteis
@@ -136,28 +136,26 @@ with aba_mercado:
     if not df_all_diario.empty and not df_all_intra.empty:
         for nome, ticker in ativos.items():
             try:
-                if len(lista_tickers) > 1:
-                    df_d_ativo = pd.DataFrame()
-                    df_d_ativo['High'] = df_all_diario['High'][ticker]
-                    df_d_ativo['Low'] = df_all_diario['Low'][ticker]
-                    df_d_ativo['Close'] = df_all_diario['Close'][ticker]
-                    
-                    df_i_ativo = pd.DataFrame()
-                    df_i_ativo['High'] = df_all_intra['High'][ticker]
-                    df_i_ativo['Low'] = df_all_intra['Low'][ticker]
-                    df_i_ativo['Close'] = df_all_intra['Close'][ticker]
+                # Extração limpa para Multi-index ou Tabela Simples
+                if ('High', ticker) in df_all_diario.columns:
+                    high_raw = df_all_diario['High'][ticker].dropna().to_numpy()
+                    low_raw = df_all_diario['Low'][ticker].dropna().to_numpy()
+                    close_raw = df_all_diario['Close'][ticker].dropna().to_numpy()
                 else:
-                    df_d_ativo = df_all_diario
+                    high_raw = df_all_diario['High'].dropna().to_numpy()
+                    low_raw = df_all_diario['Low'].dropna().to_numpy()
+                    close_raw = df_all_diario['Close'].dropna().to_numpy()
+                    
+                if ('Close', ticker) in df_all_intra.columns:
+                    df_i_ativo = pd.DataFrame(df_all_intra.loc[:, (slice(None), ticker)])
+                    df_i_ativo.columns = df_i_ativo.columns.droplevel(1)
+                else:
                     df_i_ativo = df_all_intra
                 
-                df_d_ativo = df_d_ativo.dropna()
                 df_i_ativo = df_i_ativo.dropna()
+                fechamentos_intra = df_i_ativo['Close'].to_numpy()
                 
-                if len(df_d_ativo) >= 2 and len(df_i_ativo) >= 20:
-                    high_raw = df_d_ativo['High'].to_numpy()
-                    low_raw = df_d_ativo['Low'].to_numpy()
-                    close_raw = df_d_ativo['Close'].to_numpy()
-                    
+                if len(high_raw) >= 2 and len(fechamentos_intra) >= 20:
                     maxima_ant = float(high_raw[-2])
                     minima_ant = float(low_raw[-2])
                     fechamento_ant = float(close_raw[-2])
@@ -166,7 +164,6 @@ with aba_mercado:
                     R1 = (2 * P) - minima_ant
                     S1 = (2 * P) - maxima_ant
                     
-                    fechamentos_intra = df_i_ativo['Close'].to_numpy()
                     ultimo_fechamento = float(fechamentos_intra[-1])
                     
                     if len(fechamentos_intra) >= 201:
@@ -194,6 +191,6 @@ with aba_mercado:
                             
                         cifr = "R$" if nome in ['Dólar', 'Ibovespa', 'Petrobras', 'Vale'] else "US$"
                         
-                        # Estrutura isolada de dicionário limpo para evitar conflitos de colagem
-                        dados_linha = {
-                            "Ativo": nome, 
+                        # Dicionário e fechamento reconstruídos com formatação estrita
+                        lista_tabela.append({
+                            "Ativo": nome,
