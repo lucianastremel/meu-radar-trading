@@ -12,7 +12,7 @@ st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="c
 # Força o fuso horário de Brasília para sincronizar com o computador
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v21.0")
+st.markdown("### 📡 Radar Multimercados v23.0")
 st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
 perfil = st.radio("Selecione o Perfil:", ('Day Trade (5m)', 'Swing Trade (15m)'), horizontal=True)
@@ -70,7 +70,7 @@ with aba_mercado:
     else:
         st.success("🛡️ **Varredura Total Liberada:** Sem notícias impactantes travando a grade agora.")
 
-    # --- 📈 1. RENDERIZAÇÃO BLINDADA DO GRÁFICO UNIFICADO ---
+    # --- 📈 1. RENDERIZAÇÃO DO GRÁFICO UNIFICADO ---
     tickers_grafico = ['NQ=F', 'ES=F', 'YM=F']
     df_grafico_all = yf.download(tickers=tickers_grafico, period='5d', interval=tempo_grafico, progress=False)
     
@@ -87,14 +87,10 @@ with aba_mercado:
         if not df_g_hoje.empty:
             st.write("### 📈 Gráfico de Comparação de Preços (%)")
             fig = go.Figure()
-            
             cores_linhas = {'Nasdaq 100': '#00B0FF', 'S&P 500': '#FF6D00', 'Dow Jones': '#2962FF'}
             map_tickers = {'NQ=F': 'Nasdaq 100', 'ES=F': 'S&P 500', 'YM=F': 'Dow Jones'}
             
-            if df_g_hoje.index.tz is not None:
-                tempos_formatados = df_g_hoje.index.tz_convert('America/Sao_Paulo').strftime('%H:%M')
-            else:
-                tempos_formatados = df_g_hoje.index.strftime('%H:%M')
+            tempos_formatados = df_g_hoje.index.tz_convert('America/Sao_Paulo').strftime('%H:%M') if df_g_hoje.index.tz is not None else df_g_hoje.index.strftime('%H:%M')
                 
             for tk in tickers_grafico:
                 if 'Close' in df_g_hoje.columns and tk in df_g_hoje['Close'].columns:
@@ -111,27 +107,26 @@ with aba_mercado:
             
             fig.add_hline(y=0.0, line_dash="dash", line_color="#888888", annotation_text="Eixo do Pivô", annotation_position="bottom left")
             fig.update_layout(
-                margin=dict(l=15, r=15, t=15, b=15),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                yaxis=dict(ticksuffix="%", gridcolor="#222222", zeroline=False),
-                xaxis=dict(gridcolor="#222222", nticks=8),
-                hovermode="x unified",
-                height=340,
-                template="plotly_dark"
+                margin=dict(l=15, r=15, t=15, b=15), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                yaxis=dict(ticksuffix="%", gridcolor="#222222", zeroline=False), xaxis=dict(gridcolor="#222222", nticks=8),
+                hovermode="x unified", height=340, template="plotly_dark"
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    # --- 📊 2. PROCESSAMENTO ISOLADO E SEGURO DA TABELA DE SINAIS ---
+    # --- 📊 2. MOTORS DA TABELA COM TRATAMENTO DE MULTI-INDEX ---
     lista_tabela = []
     
     for nome, ticker in ativos.items():
         try:
-            # Downloads individuais limpos para evitar estruturas Multi-index conflituosas
-            df_intra = yf.download(tickers=ticker, period='5d', interval=tempo_grafico, progress=False)
-            df_diario = yf.download(tickers=ticker, period='4d', interval='1d', progress=False)
+            df_intra = yf.download(tickers=ticker, period='6d', interval=tempo_grafico, progress=False)
+            df_diario = yf.download(tickers=ticker, period='5d', interval='1d', progress=False)
             
             if df_intra.empty or df_diario.empty:
                 continue
+            
+            # 🛡️ LINHA CRÍTICA: Achata cabeçalhos duplos caso o Yahoo Finance force Multi-index
+            if isinstance(df_intra.columns, pd.MultiIndex): df_intra.columns = [c[0] for c in df_intra.columns]
+            if isinstance(df_diario.columns, pd.MultiIndex): df_diario.columns = [c[0] for c in df_diario.columns]
                 
             df_intra = df_intra.dropna(subset=['Close'])
             df_diario = df_diario.dropna(subset=['High', 'Low', 'Close'])
@@ -162,25 +157,16 @@ with aba_mercado:
                     if esta_travado:
                         sinal = "🔒 BLOQUEADO"
                     else:
-                        if ultimo_fechamento > ma9 and ma9 > ma21 and ifr < 65:
-                            sinal = "🟢 COMPRA ATIVA"
-                        elif ultimo_fechamento < ma9 and ma9 < ma21 and ifr > 35:
-                            sinal = "🔴 VENDA ATIVA"
-                        elif ifr >= 70:
-                            sinal = "⚠️ EXAUSTÃO COMPRA"
-                        elif ifr <= 30:
-                            sinal = "⚠️ EXAUSTÃO VENDA"
+                        if ultimo_fechamento > ma9 and ma9 > ma21 and ifr < 65: sinal = "🟢 COMPRA ATIVA"
+                        elif ultimo_fechamento < ma9 and ma9 < ma21 and ifr > 35: sinal = "🔴 VENDA ATIVA"
+                        elif ifr >= 70: sinal = "⚠️ EXAUSTÃO COMPRA"
+                        elif ifr <= 30: sinal = "⚠️ EXAUSTÃO VENDA"
                 
                 cifr = "R$" if nome in ['Dólar', 'Ibovespa', 'Petrobras', 'Vale'] else "US$"
-                
                 lista_tabela.append({
-                    "Ativo": str(nome),
-                    "Preço": f"{cifr} {ultimo_fechamento:,.2f}",
-                    "Viés Pivô": str(vies_pivo),
-                    "Status / Sinal": str(sinal),
-                    "Pivô Central (P)": f"{cifr} {P:,.2f}",
-                    "Sup (S1)": f"{S1:,.2f}",
-                    "Res (R1)": f"{R1:,.2f}"
+                    "Ativo": str(nome), "Preço": f"{cifr} {ultimo_fechamento:,.2f}",
+                    "Viés Pivô": str(vies_pivo), "Status / Sinal": str(sinal), 
+                    "Pivô Central (P)": f"{cifr} {P:,.2f}", "Sup (S1)": f"{S1:,.2f}", "Res (R1)": f"{R1:,.2f}"
                 })
         except Exception:
             continue
@@ -191,9 +177,8 @@ with aba_mercado:
             styles = [''] * len(row)
             status_val = row['Status / Sinal']
             vies_val = row['Viés Pivô']
-            
             if "COMPRA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #2e4620; color: white; font-weight: bold;'
             elif "VENDA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #5c1d1d; color: white; font-weight: bold;'
-            elif "EXAUSTÃO" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #7d6608; color: #fec107; font-weight: bold;'
+            elif "EXAUSTÃO" in status_val: styles[styles[df_painel.columns.get_loc('Status / Sinal')]] = 'background-color: #7d6608; color: #fec107; font-weight: bold;'
             elif "BLOQUEADO" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #4a3e1b; color: #ffeb3b; font-weight: bold;'
-                
+            if "ACIMA" in vies_val: styles[df_painel.columns.get_loc('Viés Pivô')] = 'color: #4caf50; font-weight: bold;'
