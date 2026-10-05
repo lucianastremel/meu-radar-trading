@@ -12,7 +12,7 @@ st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="c
 # Força o fuso horário de Brasília para sincronizar com o computador
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v24.0")
+st.markdown("### 📡 Radar Multimercados v25.0")
 st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
 perfil = st.radio("Selecione o Perfil:", ('Day Trade (5m)', 'Swing Trade (15m)'), horizontal=True)
@@ -125,8 +125,8 @@ with aba_mercado:
             if df_intra.empty or df_diario.empty:
                 continue
             
-            if isinstance(df_intra.columns, pd.MultiIndex): df_intra.columns = [c[0] for c in df_intra.columns]
-            if isinstance(df_diario.columns, pd.MultiIndex): df_diario.columns = [c[0] for c in df_diario.columns]
+            if isinstance(df_intra.columns, pd.MultiIndex): df_intra.columns = [c for c in df_intra.columns]
+            if isinstance(df_diario.columns, pd.MultiIndex): df_diario.columns = [c for c in df_diario.columns]
                 
             df_intra = df_intra.dropna(subset=['Close'])
             df_diario = df_diario.dropna(subset=['High', 'Low', 'Close'])
@@ -149,6 +149,7 @@ with aba_mercado:
                 vies_pivo = "🔼 ACIMA" if ultimo_fechamento > P else "🔽 ABAIXO"
                 
                 sinal = "⚪ NEUTRO"
+                # CORREÇÃO CRÍTICA: Flexibilizado de 201 para 10 candles para forçar o desenho imediato
                 if len(fechamentos_intra) >= 10:
                     ma9 = float(df_intra['Close'].rolling(window=9).mean().iloc[-1])
                     ma21 = float(df_intra['Close'].rolling(window=21).mean().iloc[-1])
@@ -181,4 +182,3 @@ with aba_mercado:
             elif "VENDA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #5c1d1d; color: white; font-weight: bold;'
             elif "EXAUSTÃO" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #7d6608; color: #fec107; font-weight: bold;'
             elif "BLOQUEADO" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #4a3e1b; color: #ffeb3b; font-weight: bold;'
-            if "ACIMA" in vies_val: styles[df_painel.columns.get_loc('Viés Pivô')] = 'color: #4caf50; font-weight: bold;'
