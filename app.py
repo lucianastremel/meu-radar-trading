@@ -12,7 +12,7 @@ st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="c
 # Força o fuso horário de Brasília para sincronizar com o computador
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v20.0")
+st.markdown("### 📡 Radar Multimercados v20.5")
 st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
 perfil = st.radio("Selecione o Perfil:", ('Day Trade (5m)', 'Swing Trade (15m)'), horizontal=True)
@@ -121,20 +121,24 @@ with aba_mercado:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    # --- 📊 ENGENHARIA DE LEITURA DIRETA E SEGURA DA TABELA ---
     lista_tabela = []
     
     if not df_all_diario.empty and not df_all_intra.empty:
         for nome, ticker in ativos.items():
             try:
-                # Validação direta e infalível de colunas por dicionário simples
+                # Alinhamento e checagem de dados vazios para travar quebras de ativos fechados
                 if 'Close' in df_all_intra.columns and ticker in df_all_intra['Close'].columns:
                     serie_intra = df_all_intra['Close'][ticker].dropna()
+                    if serie_intra.empty:
+                        continue
                     fechamentos_intra = serie_intra.to_numpy()
                 else:
                     continue
                     
                 if 'High' in df_all_diario.columns and ticker in df_all_diario['High'].columns:
+                    df_d_valido = df_all_diario.dropna(subset=[('High', ticker), ('Low', ticker), ('Close', ticker)]) if isinstance(df_all_diario.columns, pd.MultiIndex) else df_all_diario.dropna(subset=['High', 'Low', 'Close'])
+                    if df_d_valido.empty:
+                        continue
                     high_raw = df_all_diario['High'][ticker].dropna().to_numpy()
                     low_raw = df_all_diario['Low'][ticker].dropna().to_numpy()
                     close_raw = df_all_diario['Close'][ticker].dropna().to_numpy()
@@ -193,5 +197,3 @@ with aba_mercado:
             status_val = row['Status / Sinal']
             vies_val = row['Viés Pivô']
             
-            if "COMPRA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #2e4620; color: white; font-weight: bold;'
-            elif "VENDA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #5c1d1d; color: white; font-weight: bold;'
