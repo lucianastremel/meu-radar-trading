@@ -12,7 +12,7 @@ st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="c
 # Força o fuso horário de Brasília para sincronizar com o computador
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v14.1")
+st.markdown("### 📡 Radar Multimercados v14.5")
 st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
 # Abas e Perfil Operacional táteis
@@ -77,14 +77,65 @@ with aba_mercado:
     else:
         st.success("🛡️ **Varredura Total Liberada:** Sem notícias impactantes travando a grade agora.")
 
-    lista_tabela = []
-    dados_grafico = {}
+    # --- 📈 DOWNLOAD EXCLUSIVO E SEPARADO PARA O GRÁFICO UNIFICADO ---
+    tickers_grafico = ['NQ=F', 'ES=F', 'YM=F']
+    df_grafico_all = yf.download(tickers=tickers_grafico, period='6d', interval=tempo_grafico, progress=False)
     
+    if not df_grafico_all.empty:
+        df_g_filtro = df_grafico_all.copy()
+        df_g_filtro['DataStr'] = df_g_filtro.index.strftime('%Y-%m-%d')
+        hoje_str = datetime.now(fuso_br).strftime('%Y-%m-%d')
+        
+        df_g_hoje = df_g_filtro[df_g_filtro['DataStr'] == hoje_str]
+        if df_g_hoje.empty:
+            ultimas_datas = df_g_filtro['DataStr'].unique()
+            df_g_hoje = df_g_filtro[df_g_filtro['DataStr'] == ultimas_datas[-1]]
+            
+        if not df_g_hoje.empty:
+            st.write("### 📈 Gráfico de Comparação de Preços (%)")
+            fig = go.Figure()
+            
+            cores_linhas = {'Nasdaq 100': '#00B0FF', 'S&P 500': '#FF6D00', 'Dow Jones': '#2962FF'}
+            map_tickers = {'NQ=F': 'Nasdaq 100', 'ES=F': 'S&P 500', 'YM=F': 'Dow Jones'}
+            
+            if df_g_hoje.index.tz is not None:
+                tempos_formatados = df_g_hoje.index.tz_convert('America/Sao_Paulo').strftime('%H:%M')
+            else:
+                tempos_formatados = df_g_hoje.index.strftime('%H:%M')
+                
+            for tk in tickers_grafico:
+                if 'Close' in df_g_hoje.columns and tk in df_g_hoje['Close'].columns:
+                    serie_preco = df_g_hoje['Close'][tk].dropna()
+                    if not serie_preco.empty:
+                        preco_ini = float(serie_preco.iloc[0])
+                        variacoes = ((serie_preco - preco_ini) / preco_ini) * 100
+                        nome_ativo = map_tickers[tk]
+                        fig.add_trace(go.Scatter(
+                            x=list(tempos_formatados[-len(variacoes):]), y=list(variacoes),
+                            mode='lines', name=nome_ativo,
+                            line=dict(color=cores_linhas[nome_ativo], width=2.5)
+                        ))
+            
+            fig.add_hline(y=0.0, line_dash="dash", line_color="#888888", annotation_text="Eixo do Pivô", annotation_position="bottom left")
+            fig.update_layout(
+                margin=dict(l=15, r=15, t=15, b=15),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                yaxis=dict(ticksuffix="%", gridcolor="#222222", zeroline=False),
+                xaxis=dict(gridcolor="#222222", nticks=8),
+                hovermode="x unified",
+                height=340,
+                template="plotly_dark"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+    # --- 📊 MONTAGEM INDIVIDUAL DA TABELA DE SINAIS ---
+    lista_tabela = []
     for nome, ticker in ativos.items():
         dados_diarios = yf.download(tickers=ticker, period='3d', interval='1d', progress=False)
         dados_intra = yf.download(tickers=ticker, period='6d', interval=tempo_grafico, progress=False)
         
         if not dados_diarios.empty and len(dados_diarios) >= 2 and not dados_intra.empty and len(dados_intra) >= 20:
+            # Garante compatibilidade achatando arrays de dados diários
             high_raw = dados_diarios['High'].to_numpy().flatten()
             low_raw = dados_diarios['Low'].to_numpy().flatten()
             close_raw = dados_diarios['Close'].to_numpy().flatten()
@@ -99,33 +150,6 @@ with aba_mercado:
             
             fechamentos_intra = dados_intra['Close'].to_numpy().flatten()
             ultimo_fechamento = float(fechamentos_intra[-1])
-            
-            # --- CORREÇÃO DE SINTAXE E EXTRAÇÃO DO GRÁFICO DIÁRIO (%) ---
-            if nome in ['Dow Jones', 'S&P 500', 'Nasdaq 100']:
-                df_filtro = dados_intra.copy()
-                df_filtro['DataStr'] = df_filtro.index.strftime('%Y-%m-%d')
-                hoje_str = datetime.now(fuso_br).strftime('%Y-%m-%d')
-                
-                df_hoje = df_filtro[df_filtro['DataStr'] == hoje_str]
-                
-                if df_hoje.empty:
-                    ultimas_datas = df_filtro['DataStr'].unique()
-                    df_hoje = df_filtro[df_filtro['DataStr'] == ultimas_datas[-1]]
-                
-                if not df_hoje.empty:
-                    fechamentos_hoje = df_hoje['Close'].to_numpy().flatten()
-                    preco_inicial_hoje = float(fechamentos_hoje[0])
-                    
-                    # Correção da Linha 124: Validação limpa do fuso horário do índice
-                    if df_hoje.index.tz is not None:
-                        tempos_formatados = df_hoje.index.tz_convert('America/Sao_Paulo').strftime('%H:%M')
-                    else:
-                        tempos_formatados = df_hoje.index.strftime('%H:%M')
-                    
-                    dados_grafico[nome] = {
-                        'tempos': tempos_formatados,
-                        'variacoes': ((df_hoje['Close'] - preco_inicial_hoje) / preco_inicial_hoje) * 100
-                    }
             
             if len(fechamentos_intra) >= 201:
                 ma9 = float(pd.Series(fechamentos_intra).rolling(window=9).mean().iloc[-1])
@@ -159,33 +183,6 @@ with aba_mercado:
                     "Sup (S1)": f"{S1:,.2f}", "Res (R1)": f"{R1:,.2f}"
                 })
 
-    # --- RENDERIZAÇÃO DO GRÁFICO DINÂMICO ---
-    if dados_grafico:
-        st.write("### 📈 Gráfico de Comparação de Preços (%)")
-        fig = go.Figure()
-        
-        cores_linhas = {'Dow Jones': '#2962FF', 'S&P 500': '#FF6D00', 'Nasdaq 100': '#00B0FF'}
-        
-        for nome_ativo, info in dados_grafico.items():
-            fig.add_trace(go.Scatter(
-                x=list(info['tempos']), y=list(info['variacoes']),
-                mode='lines', name=nome_ativo,
-                line=dict(color=cores_linhas.get(nome_ativo, '#FFFFFF'), width=2.5)
-            ))
-            
-        fig.add_hline(y=0.0, line_dash="dash", line_color="#888888", annotation_text="Eixo do Pivô", annotation_position="bottom left")
-        
-        fig.update_layout(
-            margin=dict(l=15, r=15, t=15, b=15),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            yaxis=dict(ticksuffix="%", gridcolor="#222222", zeroline=False),
-            xaxis=dict(gridcolor="#222222", nticks=8),
-            hovermode="x unified",
-            height=340,
-            template="plotly_dark"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
     if lista_tabela:
         df_painel = pd.DataFrame(lista_tabela)
         def colorir_colunas(row):
@@ -196,5 +193,3 @@ with aba_mercado:
             if "COMPRA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #2e4620; color: white; font-weight: bold;'
             elif "VENDA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #5c1d1d; color: white; font-weight: bold;'
             elif "EXAUSTÃO" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #7d6608; color: #fec107; font-weight: bold;'
-            elif "BLOQUEADO" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #4a3e1b; color: #ffeb3b; font-weight: bold;'
-                
