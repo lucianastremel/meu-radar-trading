@@ -12,7 +12,7 @@ st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="c
 # Força o fuso horário de Brasília para sincronizar com o computador
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v14.5")
+st.markdown("### 📡 Radar Multimercados v15.0")
 st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
 # Abas e Perfil Operacional táteis
@@ -41,7 +41,7 @@ NOTICIAS_DO_DIA = [
     {"ID": "Janela de Almoço em Wall Street (Falta de Liquidez)", "inicio": "12:28", "fim": "12:45", "impacto": "⏳ RISCO TÉCNICO"}
 ]
 
-aba_mercado, aba_noticias = st.tabs(["📊 Sinais e Pivô", "📰 Agenda de Travas"])
+aba_mercado, aba_noticias = st.tabs(["📊 Sinais e Pivô", "📰 Agenda de Trava"])
 
 with aba_noticias:
     st.write("📋 **Grade de Monitoramento de Volatilidade:**")
@@ -77,12 +77,14 @@ with aba_mercado:
     else:
         st.success("🛡️ **Varredura Total Liberada:** Sem notícias impactantes travando a grade agora.")
 
-    # --- 📈 DOWNLOAD EXCLUSIVO E SEPARADO PARA O GRÁFICO UNIFICADO ---
-    tickers_grafico = ['NQ=F', 'ES=F', 'YM=F']
-    df_grafico_all = yf.download(tickers=tickers_grafico, period='6d', interval=tempo_grafico, progress=False)
+    # --- 📋 DOWNLOAD EM BLOCO OTIMIZADO PARA GRÁFICO E TABELA ---
+    lista_tickers = list(ativos.values())
+    df_all_intra = yf.download(tickers=lista_tickers, period='6d', interval=tempo_grafico, progress=False)
+    df_all_diario = yf.download(tickers=lista_tickers, period='3d', interval='1d', progress=False)
     
-    if not df_grafico_all.empty:
-        df_g_filtro = df_grafico_all.copy()
+    # Renderização Otimizada do Gráfico Unificado
+    if not df_all_intra.empty:
+        df_g_filtro = df_all_intra.copy()
         df_g_filtro['DataStr'] = df_g_filtro.index.strftime('%Y-%m-%d')
         hoje_str = datetime.now(fuso_br).strftime('%Y-%m-%d')
         
@@ -103,7 +105,7 @@ with aba_mercado:
             else:
                 tempos_formatados = df_g_hoje.index.strftime('%H:%M')
                 
-            for tk in tickers_grafico:
+            for tk in ['NQ=F', 'ES=F', 'YM=F']:
                 if 'Close' in df_g_hoje.columns and tk in df_g_hoje['Close'].columns:
                     serie_preco = df_g_hoje['Close'][tk].dropna()
                     if not serie_preco.empty:
@@ -128,68 +130,70 @@ with aba_mercado:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    # --- 📊 MONTAGEM INDIVIDUAL DA TABELA DE SINAIS ---
+    # --- 📊 MONTAGEM SEGURA DA TABELA DE SINAIS INSTITUCIONAIS ---
     lista_tabela = []
-    for nome, ticker in ativos.items():
-        dados_diarios = yf.download(tickers=ticker, period='3d', interval='1d', progress=False)
-        dados_intra = yf.download(tickers=ticker, period='6d', interval=tempo_grafico, progress=False)
-        
-        if not dados_diarios.empty and len(dados_diarios) >= 2 and not dados_intra.empty and len(dados_intra) >= 20:
-            # Garante compatibilidade achatando arrays de dados diários
-            high_raw = dados_diarios['High'].to_numpy().flatten()
-            low_raw = dados_diarios['Low'].to_numpy().flatten()
-            close_raw = dados_diarios['Close'].to_numpy().flatten()
-            
-            maxima_ant = float(high_raw[-2])
-            minima_ant = float(low_raw[-2])
-            fechamento_ant = float(close_raw[-2])
-            
-            P = (maxima_ant + minima_ant + fechamento_ant) / 3
-            R1 = (2 * P) - minima_ant
-            S1 = (2 * P) - maxima_ant
-            
-            fechamentos_intra = dados_intra['Close'].to_numpy().flatten()
-            ultimo_fechamento = float(fechamentos_intra[-1])
-            
-            if len(fechamentos_intra) >= 201:
-                ma9 = float(pd.Series(fechamentos_intra).rolling(window=9).mean().iloc[-1])
-                ma21 = float(pd.Series(fechamentos_intra).rolling(window=21).mean().iloc[-1])
-                ma200 = float(pd.Series(fechamentos_intra).rolling(window=200).mean().iloc[-1])
-                ifr = calcular_ifr(dados_intra, 14)
-                
-                vies_pivo = "🔼 ACIMA" if ultimo_fechamento > P else "🔽 ABAIXO"
-                
-                if esta_travado:
-                    sinal = "🔒 BLOQUEADO"
-                else:
-                    sinal = "⚪ NEUTRO"
-                    if ultimo_fechamento > ma9 and ma9 > ma21 and ultimo_fechamento > ma200 and ifr < 65:
-                        sinal = "🟢 COMPRA ATIVA"
-                        st.toast(f"🟢 GATILHO COMPRA: {nome} a {ultimo_fechamento:,.2f}", icon="🟢")
-                    elif ultimo_fechamento < ma9 and ma9 < ma21 and ultimo_fechamento < ma200 and ifr > 35:
-                        sinal = "🔴 VENDA ATIVA"
-                        st.toast(f"🔴 GATILHO VENDA: {nome} a {ultimo_fechamento:,.2f}", icon="🔴")
-                    elif ifr >= 70:
-                        sinal = "⚠️ EXAUSTÃO COMPRA"
-                    elif ifr <= 30:
-                        sinal = "⚠️ EXAUSTÃO VENDA"
+    
+    if not df_all_diario.empty and not df_all_intra.empty:
+        for nome, ticker in ativos.items():
+            try:
+                # Extração segura de dados mesmo em tabelas multi-index
+                if len(lista_tickers) > 1:
+                    df_d_ativo = pd.DataFrame()
+                    df_d_ativo['High'] = df_all_diario['High'][ticker]
+                    df_d_ativo['Low'] = df_all_diario['Low'][ticker]
+                    df_d_ativo['Close'] = df_all_diario['Close'][ticker]
                     
-                cifr = "R$" if nome in ['Dólar', 'Ibovespa', 'Petrobras', 'Vale'] else "US$"
+                    df_i_ativo = pd.DataFrame()
+                    df_i_ativo['High'] = df_all_intra['High'][ticker]
+                    df_i_ativo['Low'] = df_all_intra['Low'][ticker]
+                    df_i_ativo['Close'] = df_all_intra['Close'][ticker]
+                else:
+                    df_d_ativo = df_all_diario
+                    df_i_ativo = df_all_intra
                 
-                lista_tabela.append({
-                    "Ativo": nome, "Preço": f"{cifr} {ultimo_fechamento:,.2f}",
-                    "Viés Pivô": vies_pivo, "Status / Sinal": sinal, 
-                    "Pivô Central (P)": f"{cifr} {P:,.2f}",
-                    "Sup (S1)": f"{S1:,.2f}", "Res (R1)": f"{R1:,.2f}"
-                })
+                df_d_ativo = df_d_ativo.dropna()
+                df_i_ativo = df_i_ativo.dropna()
+                
+                if len(df_d_ativo) >= 2 and len(df_i_ativo) >= 20:
+                    high_raw = df_d_ativo['High'].to_numpy()
+                    low_raw = df_d_ativo['Low'].to_numpy()
+                    close_raw = df_d_ativo['Close'].to_numpy()
+                    
+                    maxima_ant = float(high_raw[-2])
+                    minima_ant = float(low_raw[-2])
+                    fechamento_ant = float(close_raw[-2])
+                    
+                    P = (maxima_ant + minima_ant + fechamento_ant) / 3
+                    R1 = (2 * P) - minima_ant
+                    S1 = (2 * P) - maxima_ant
+                    
+                    fechamentos_intra = df_i_ativo['Close'].to_numpy()
+                    ultimo_fechamento = float(fechamentos_intra[-1])
+                    
+                    if len(fechamentos_intra) >= 201:
+                        ma9 = float(pd.Series(fechamentos_intra).rolling(window=9).mean().iloc[-1])
+                        ma21 = float(pd.Series(fechamentos_intra).rolling(window=21).mean().iloc[-1])
+                        ma200 = float(pd.Series(fechamentos_intra).rolling(window=200).mean().iloc[-1])
+                        ifr = calcular_ifr(df_i_ativo, 14)
+                        
+                        vies_pivo = "🔼 ACIMA" if ultimo_fechamento > P else "🔽 ABAIXO"
+                        
+                        if esta_travado:
+                            sinal = "🔒 BLOQUEADO"
+                        else:
+                            sinal = "⚪ NEUTRO"
+                            if ultimo_fechamento > ma9 and ma9 > ma21 and ultimo_fechamento > ma200 and ifr < 65:
+                                sinal = "🟢 COMPRA ATIVA"
+                                st.toast(f"🟢 GATILHO COMPRA: {nome} a {ultimo_fechamento:,.2f}", icon="🟢")
+                            elif ultimo_fechamento < ma9 and ma9 < ma21 and ultimo_fechamento < ma200 and ifr > 35:
+                                sinal = "🔴 VENDA ATIVA"
+                                st.toast(f"🔴 GATILHO VENDA: {nome} a {ultimo_fechamento:,.2f}", icon="🔴")
+                            elif ifr >= 70:
+                                sinal = "⚠️ EXAUSTÃO COMPRA"
+                            elif ifr <= 30:
+                                sinal = "⚠️ EXAUSTÃO VENDA"
+                            
+                        cifr = "R$" if nome in ['Dólar', 'Ibovespa', 'Petrobras', 'Vale'] else "US$"
+                        
+                        lista_tabela.append({
 
-    if lista_tabela:
-        df_painel = pd.DataFrame(lista_tabela)
-        def colorir_colunas(row):
-            styles = [''] * len(row)
-            status_val = row['Status / Sinal']
-            vies_val = row['Viés Pivô']
-            
-            if "COMPRA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #2e4620; color: white; font-weight: bold;'
-            elif "VENDA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #5c1d1d; color: white; font-weight: bold;'
-            elif "EXAUSTÃO" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #7d6608; color: #fec107; font-weight: bold;'
