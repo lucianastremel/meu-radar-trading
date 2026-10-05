@@ -12,17 +12,12 @@ st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="c
 # Força o fuso horário de Brasília para sincronizar com o computador
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v18.5")
+st.markdown("### 📡 Radar Multimercados v19.0")
 st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
 perfil = st.radio("Selecione o Perfil:", ('Day Trade (5m)', 'Swing Trade (15m)'), horizontal=True)
 
-if 'Day Trade' in perfil:
-    tempo_grafico = '5m'
-    janela_stop = 12
-else:
-    tempo_grafico = '15m'
-    janela_stop = 32
+tempo_grafico = '5m' if 'Day Trade' in perfil else '15m'
 
 ativos = {
     'Nasdaq 100': 'NQ=F', 'S&P 500': 'ES=F', 'Dow Jones': 'YM=F',
@@ -76,7 +71,7 @@ with aba_mercado:
         st.success("🛡️ **Varredura Total Liberada:** Sem notícias impactantes travando a grade agora.")
 
     lista_tickers = list(ativos.values())
-    df_all_intra = yf.download(tickers=lista_tickers, period='8d', interval=tempo_grafico, progress=False)
+    df_all_intra = yf.download(tickers=lista_tickers, period='5d', interval=tempo_grafico, progress=False)
     df_all_diario = yf.download(tickers=lista_tickers, period='4d', interval='1d', progress=False)
     
     if not df_all_intra.empty:
@@ -143,7 +138,7 @@ with aba_mercado:
             df_i_ativo = df_i_ativo.dropna(subset=['Close'])
             fechamentos_intra = df_i_ativo['Close'].to_numpy()
             
-            if len(high_raw) >= 2 and len(fechamentos_intra) >= 15:
+            if len(high_raw) >= 2 and len(fechamentos_intra) >= 5:
                 maxima_ant = float(high_raw[-2])
                 minima_ant = float(low_raw[-2])
                 fechamento_ant = float(close_raw[-2])
@@ -156,8 +151,7 @@ with aba_mercado:
                 vies_pivo = "🔼 ACIMA" if ultimo_fechamento > P else "🔽 ABAIXO"
                 
                 sinal = "⚪ NEUTRO"
-                # Ajuste Técnico Crucial: Reduzido de 201 para 100 para liberar as médias na sessão atual da tarde
-                if len(fechamentos_intra) >= 100:
+                if len(fechamentos_intra) >= 10:
                     ma9 = float(pd.Series(fechamentos_intra).rolling(window=9).mean().iloc[-1])
                     ma21 = float(pd.Series(fechamentos_intra).rolling(window=21).mean().iloc[-1])
                     ifr = calcular_ifr(df_i_ativo, 14)
@@ -195,3 +189,4 @@ with aba_mercado:
             
             if "COMPRA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #2e4620; color: white; font-weight: bold;'
             elif "VENDA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #5c1d1d; color: white; font-weight: bold;'
+            elif "EXAUSTÃO" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #7d6608; color: #fec107; font-weight: bold;'
