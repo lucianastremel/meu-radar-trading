@@ -136,15 +136,16 @@ with aba_mercado:
     if not df_all_diario.empty and not df_all_intra.empty:
         for nome, ticker in ativos.items():
             try:
-                # Extração limpa para Multi-index ou Tabela Simples
                 if ('High', ticker) in df_all_diario.columns:
                     high_raw = df_all_diario['High'][ticker].dropna().to_numpy()
                     low_raw = df_all_diario['Low'][ticker].dropna().to_numpy()
                     close_raw = df_all_diario['Close'][ticker].dropna().to_numpy()
-                else:
+                elif 'High' in df_all_diario.columns:
                     high_raw = df_all_diario['High'].dropna().to_numpy()
                     low_raw = df_all_diario['Low'].dropna().to_numpy()
                     close_raw = df_all_diario['Close'].dropna().to_numpy()
+                else:
+                    continue
                     
                 if ('Close', ticker) in df_all_intra.columns:
                     df_i_ativo = pd.DataFrame(df_all_intra.loc[:, (slice(None), ticker)])
@@ -191,6 +192,7 @@ with aba_mercado:
                             
                         cifr = "R$" if nome in ['Dólar', 'Ibovespa', 'Petrobras', 'Vale'] else "US$"
                         
-                        # Dicionário e fechamento reconstruídos com formatação estrita
                         lista_tabela.append({
                             "Ativo": nome,
+                            "Preço": f"{cifr} {ultimo_fechamento:,.2f}",
+
