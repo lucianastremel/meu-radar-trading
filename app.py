@@ -12,7 +12,7 @@ st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="c
 # Força o fuso horário de Brasília para sincronizar com o computador
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v14.0")
+st.markdown("### 📡 Radar Multimercados v14.1")
 st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
 # Abas e Perfil Operacional táteis
@@ -100,28 +100,27 @@ with aba_mercado:
             fechamentos_intra = dados_intra['Close'].to_numpy().flatten()
             ultimo_fechamento = float(fechamentos_intra[-1])
             
-            # --- CORREÇÃO DA ENGENHARIA DO GRÁFICO DIÁRIO (%) ---
+            # --- CORREÇÃO DE SINTAXE E EXTRAÇÃO DO GRÁFICO DIÁRIO (%) ---
             if nome in ['Dow Jones', 'S&P 500', 'Nasdaq 100']:
-                # Converte o índice temporal para string para isolar apenas o dia de hoje
                 df_filtro = dados_intra.copy()
                 df_filtro['DataStr'] = df_filtro.index.strftime('%Y-%m-%d')
                 hoje_str = datetime.now(fuso_br).strftime('%Y-%m-%d')
                 
-                # Isola estritamente as linhas correspondentes ao dia de hoje
                 df_hoje = df_filtro[df_filtro['DataStr'] == hoje_str]
                 
-                # Fallback de segurança: Se o dia acabou de virar e não houver dados, pega o último dia completo
                 if df_hoje.empty:
                     ultimas_datas = df_filtro['DataStr'].unique()
                     df_hoje = df_filtro[df_filtro['DataStr'] == ultimas_datas[-1]]
                 
                 if not df_hoje.empty:
-                    # O preço inicial passa a ser cirurgicamente o primeiro fechamento da sessão atual
                     fechamentos_hoje = df_hoje['Close'].to_numpy().flatten()
                     preco_inicial_hoje = float(fechamentos_hoje[0])
                     
-                    # Converte o timestamp para o horário de Brasília no formato HH:MM para limpar o Eixo X
-                    tempos_formatados = df_hoje.index.tz_convert('America/Sao_Paulo').strftime('%H:%M') if df_hoje.index.tz is else df_hoje.index.strftime('%H:%M')
+                    # Correção da Linha 124: Validação limpa do fuso horário do índice
+                    if df_hoje.index.tz is not None:
+                        tempos_formatados = df_hoje.index.tz_convert('America/Sao_Paulo').strftime('%H:%M')
+                    else:
+                        tempos_formatados = df_hoje.index.strftime('%H:%M')
                     
                     dados_grafico[nome] = {
                         'tempos': tempos_formatados,
@@ -165,7 +164,6 @@ with aba_mercado:
         st.write("### 📈 Gráfico de Comparação de Preços (%)")
         fig = go.Figure()
         
-        # Cores idênticas às institucionais do seu print de exemplo
         cores_linhas = {'Dow Jones': '#2962FF', 'S&P 500': '#FF6D00', 'Nasdaq 100': '#00B0FF'}
         
         for nome_ativo, info in dados_grafico.items():
@@ -197,3 +195,6 @@ with aba_mercado:
             
             if "COMPRA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #2e4620; color: white; font-weight: bold;'
             elif "VENDA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #5c1d1d; color: white; font-weight: bold;'
+            elif "EXAUSTÃO" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #7d6608; color: #fec107; font-weight: bold;'
+            elif "BLOQUEADO" in status_val: styles[df_painel.columns.get_loc('Status / Sinal')] = 'background-color: #4a3e1b; color: #ffeb3b; font-weight: bold;'
+                
