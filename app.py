@@ -3,20 +3,18 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import pytz
 
 st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="centered")
+fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v10.0")
-st.write(f"Última atualização: {datetime.now().strftime('%H:%M:%S')}")
+st.markdown("### 📡 Radar Multimercados v26.0")
+st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
-perfil = st.radio("Selecione o Perfil:", ('Day Trade (5m)', 'Swing Trade (15m)'), horizontal=True)
-
-if 'Day Trade' in perfil:
-    tempo_grafico = '5m'
-    janela_stop = 12
-else:
-    tempo_grafico = '15m'
-    janela_stop = 32
+# Travado no perfil institucional de 15 minutos recomendado
+st.info("🎯 Configuração Otimizada para Monitoramento de Pullbacks (15 minutos)")
+tempo_grafico = '15m'
+janela_stop = 32
 
 ativos = {
     'Nasdaq 100': 'NQ=F', 'S&P 500': 'ES=F', 'Dow Jones': 'YM=F',
@@ -25,11 +23,19 @@ ativos = {
     'Ibovespa': '^BVSP', 'Petrobras': 'PETR4.SA', 'Vale': 'VALE3.SA'
 }
 
+NOTICIAS_DO_DIA = [
+    {"ID": "ADP Employment Report (Prévia Payroll)", "inicio": "09:12", "fim": "09:20", "impacto": "🔴 ALTO IMPACTO"},
+    {"ID": "PCE Inflation / Nonfarm Payrolls (Dado Oficial)", "inicio": "09:28", "fim": "09:40", "impacto": "🔥 CRÍTICO"},
+    {"ID": "Abertura à Vista NY / ISM Manufacturing PMI", "inicio": "10:28", "fim": "10:42", "impacto": "🔴 ALTO IMPACTO"},
+    {"ID": "Estoques de Petróleo EIA (Gera Volatilidade Brent)", "inicio": "11:28", "fim": "11:38", "impacto": "🟡 MÉDIO IMPACTO"},
+    {"ID": "Janela de Almoço em Wall Street (Falta de Liquidez)", "inicio": "12:28", "fim": "12:45", "impacto": "⏳ RISCO TÉCNICO"}
+]
+
 aba_mercado, aba_noticias = st.tabs(["📊 Sinais e Pivô", "📰 Agenda Macro"])
 
 with aba_noticias:
-    st.info("📌 [ALTO IMPACTO] Atas de Reuniões do FOMC e IPC EUA nesta semana")
-    st.info("📌 [ALTO IMPACTO] Riscos Geopolíticos Ativos no Oriente Médio")
+    for n in NOTICIAS_DO_DIA:
+        st.warning(f"🕒 {n['inicio']} até {n['fim']} - **{n['ID']}**")
 
 def calcular_ifr(df, periods=14):
     fechamentos = df['Close'].to_numpy().flatten()
@@ -42,67 +48,71 @@ def calcular_ifr(df, periods=14):
     if avg_loss == 0: return 100.0
     return float(100 - (100 / (1 + (avg_gain / avg_loss))))
 
+def checar_trava_noticias():
+    agora_str = datetime.now(fuso_br).strftime("%H:%M")
+    agora_dt = datetime.strptime(agora_str, "%H:%M")
+    for noticia in NOTICIAS_DO_DIA:
+        inicio_dt = datetime.strptime(noticia["inicio"], "%H:%M")
+        fim_dt = datetime.strptime(noticia["fim"], "%H:%M")
+        if inicio_dt <= agora_dt <= fim_dt:
+            return True, noticia["ID"], noticia["fim"]
+    return False, "", ""
+
 with aba_mercado:
+    esta_travado, motivo_trava, hora_liberacao = checar_trava_noticias()
+    if esta_travado:
+        st.warning(f"🔒 **SINAIS BLOQUEADOS OPERACIONALMENTE:** {motivo_trava} (Liberação às {hora_liberacao})")
+        
     lista_tabela = []
     for nome, ticker in ativos.items():
-        dados_diarios = yf.download(tickers=ticker, period='3d', interval='1d', progress=False)
-        dados_intra = yf.download(tickers=ticker, period='6d', interval=tempo_grafico, progress=False)
-        
-        if not dados_diarios.empty and len(dados_diarios) >= 2 and not dados_intra.empty and len(dados_intra) >= 201:
-            high_raw = dados_diarios['High'].to_numpy().flatten()
-            low_raw = dados_diarios['Low'].to_numpy().flatten()
-            close_raw = dados_diarios['Close'].to_numpy().flatten()
+        try:
+            df_intra = yf.download(tickers=ticker, period='6d', interval=tempo_grafico, progress=False)
+            df_diario = yf.download(tickers=ticker, period='4d', interval='1d', progress=False)
             
-            maxima_ant = float(high_raw[-2])
-            minima_ant = float(low_raw[-2])
-            fechamento_ant = float(close_raw[-2])
+            if df_intra.empty or df_diario.empty: continue
             
-            P = (maxima_ant + minima_ant + fechamento_ant) / 3
-            R1 = (2 * P) - minima_ant
-            S1 = (2 * P) - maxima_ant
-            R2 = P + (maxima_ant - minima_ant)
-            S2 = P - (maxima_ant - minima_ant)
-            
-            fechamentos_intra = dados_intra['Close'].to_numpy().flatten()
-            maximas_intra = dados_intra['High'].to_numpy().flatten()
-            minimas_intra = dados_intra['Low'].to_numpy().flatten()
-            
+            fechamentos_intra = df_intra['Close'].to_numpy().flatten()
             ultimo_fechamento = float(fechamentos_intra[-1])
-            ma9 = float(pd.Series(fechamentos_intra).rolling(window=9).mean().iloc[-1])
-            ma21 = float(pd.Series(fechamentos_intra).rolling(window=21).mean().iloc[-1])
-            ma200 = float(pd.Series(fechamentos_intra).rolling(window=200).mean().iloc[-1])
-            ifr = calcular_ifr(dados_intra, 14)
             
-            folga_tecnica = ultimo_fechamento * 0.0015
-            stop_venda_tecnico = float(np.max(maximas_intra[-janela_stop:]))
-            stop_compra_tecnico = float(np.min(minimas_intra[-janela_stop:]))
+            high_raw = df_diario['High'].to_numpy().flatten()
+            low_raw = df_diario['Low'].to_numpy().flatten()
+            close_raw = df_diario['Close'].to_numpy().flatten()
             
-            if stop_venda_tecnico <= ultimo_fechamento: stop_venda_tecnico = ultimo_fechamento + folga_tecnica
-            if stop_compra_tecnico >= ultimo_fechamento: stop_compra_tecnico = ultimo_fechamento - folga_tecnica
+            P = (float(high_raw[-2]) + float(low_raw[-2]) + float(close_raw[-2])) / 3
+            S1 = (2 * P) - float(high_raw[-2])
+            R1 = (2 * P) - float(low_raw[-2])
+            
+            sinal = "⚪ NEUTRO"
+            
+            if len(fechamentos_intra) >= 20:
+                ma9 = float(df_intra['Close'].rolling(window=9).mean().iloc[-1])
+                ma21 = float(df_intra['Close'].rolling(window=21).mean().iloc[-1])
+                ifr = calcular_ifr(df_intra, 14)
+                afastamento = ((ultimo_fechamento - ma9) / ma9) * 100
+                
+                if esta_travado:
+                    sinal = "🔒 BLOQUEADO"
+                else:
+                    if ifr >= 70 and max(afastamento, 0) >= 0.35:
+                        sinal = "⚠️ PULLBACK QUEDA"
+                        st.toast(f"⚠️ EXAUSTÃO INSTITUCIONAL: Pullback iminente em {nome}!", icon="⚠️")
+                    elif ifr <= 30 and min(afastamento, 0) <= -0.35:
+                        sinal = "⚠️ PULLBACK ALTA"
+                        st.toast(f"⚠️ EXAUSTÃO INSTITUCIONAL: Pullback iminente em {nome}!", icon="⚠️")
+                    elif ultimo_fechamento > ma9 and ma9 > ma21 and ifr < 65:
+                        sinal = "🟢 COMPRA ATIVA"
+                    elif ultimo_fechamento < ma9 and ma9 < ma21 and ifr > 35:
+                        sinal = "🔴 VENDA ATIVA"
             
             vies_pivo = "🔼 ACIMA" if ultimo_fechamento > P else "🔽 ABAIXO"
-            sinal = "⚪ NEUTRO"
-            stop_exibido = "-"
-            
-            if ultimo_fechamento > ma9 and ma9 > ma21 and ultimo_fechamento > ma200 and ifr < 65:
-                sinal = "🟢 COMPRA ATIVA"
-                stop_exibido = f"{stop_compra_tecnico:,.2f}"
-            elif ultimo_fechamento < ma9 and ma9 < ma21 and ultimo_fechamento < ma200 and ifr > 35:
-                sinal = "🔴 VENDA ATIVA"
-                stop_exibido = f"{stop_venda_tecnico:,.2f}"
-            elif ifr >= 70:
-                sinal = "⚠️ EXAUSTÃO COMPRA"
-            elif ifr <= 30:
-                sinal = "⚠️ EXAUSTÃO VENDA"
-                
             cifr = "R$" if nome in ['Dólar', 'Ibovespa', 'Petrobras', 'Vale'] else "US$"
             
             lista_tabela.append({
                 "Ativo": nome, "Preço": f"{cifr} {ultimo_fechamento:,.2f}",
                 "Viés Pivô": vies_pivo, "Status": sinal, 
-                "Pivô Central (P)": f"{cifr} {P:,.2f}",
-                "Sup (S1/S2)": f"{S1:,.2f} / {S2:,.2f}", "Res (R1/R2)": f"{R1:,.2f} / {R2:,.2f}"
+                "Pivô Central (P)": f"{cifr} {P:,.2f}", "Sup (S1)": f"{S1:,.2f}", "Res (R1)": f"{R1:,.2f}"
             })
+        except Exception: continue
             
     if lista_tabela:
         df_painel = pd.DataFrame(lista_tabela)
@@ -112,10 +122,9 @@ with aba_mercado:
             vies_val = row['Viés Pivô']
             if "COMPRA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status')] = 'background-color: #2e4620; color: white; font-weight: bold;'
             elif "VENDA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status')] = 'background-color: #5c1d1d; color: white; font-weight: bold;'
-            elif "EXAUSTÃO" in status_val: styles[df_painel.columns.get_loc('Status')] = 'background-color: #7d6608; color: #fec107; font-weight: bold;'
+            elif "PULLBACK" in status_val or "⚠️" in status_val: styles[df_painel.columns.get_loc('Status')] = 'background-color: #7d6608; color: #fec107; font-weight: bold;'
+            elif "BLOQUEADO" in status_val: styles[df_painel.columns.get_loc('Status')] = 'background-color: #4a3e1b; color: #ffeb3b; font-weight: bold;'
             if "ACIMA" in vies_val: styles[df_painel.columns.get_loc('Viés Pivô')] = 'color: #4caf50; font-weight: bold;'
             elif "ABAIXO" in vies_val: styles[df_painel.columns.get_loc('Viés Pivô')] = 'color: #f44336; font-weight: bold;'
             return styles
         st.dataframe(df_painel.style.apply(colorir_colunas, axis=1), use_container_width=True, hide_index=True)
-    else:
-        st.warning("Aguardando carregamento de dados...")
