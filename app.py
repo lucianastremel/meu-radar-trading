@@ -8,13 +8,11 @@ import pytz
 st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="centered")
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v26.0")
+st.markdown("### 📡 Radar Multimercados v26.5")
 st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
-# Travado no perfil institucional de 15 minutos recomendado
 st.info("🎯 Configuração Otimizada para Monitoramento de Pullbacks (15 minutos)")
 tempo_grafico = '15m'
-janela_stop = 32
 
 ativos = {
     'Nasdaq 100': 'NQ=F', 'S&P 500': 'ES=F', 'Dow Jones': 'YM=F',
@@ -37,8 +35,8 @@ with aba_noticias:
     for n in NOTICIAS_DO_DIA:
         st.warning(f"🕒 {n['inicio']} até {n['fim']} - **{n['ID']}**")
 
-def calcular_ifr(df, periods=14):
-    fechamentos = df['Close'].to_numpy().flatten()
+def calcular_ifr(df_close, periods=14):
+    fechamentos = df_close.to_numpy().flatten()
     if len(fechamentos) < periods: return 50.0
     deltas = np.diff(fechamentos)
     gains = np.where(deltas > 0, deltas, 0)
@@ -64,55 +62,67 @@ with aba_mercado:
         st.warning(f"🔒 **SINAIS BLOQUEADOS OPERACIONALMENTE:** {motivo_trava} (Liberação às {hora_liberacao})")
         
     lista_tabela = []
-    for nome, ticker in ativos.items():
-        try:
-            df_intra = yf.download(tickers=ticker, period='6d', interval=tempo_grafico, progress=False)
-            df_diario = yf.download(tickers=ticker, period='4d', interval='1d', progress=False)
-            
-            if df_intra.empty or df_diario.empty: continue
-            
-            fechamentos_intra = df_intra['Close'].to_numpy().flatten()
-            ultimo_fechamento = float(fechamentos_intra[-1])
-            
-            high_raw = df_diario['High'].to_numpy().flatten()
-            low_raw = df_diario['Low'].to_numpy().flatten()
-            close_raw = df_diario['Close'].to_numpy().flatten()
-            
-            P = (float(high_raw[-2]) + float(low_raw[-2]) + float(close_raw[-2])) / 3
-            S1 = (2 * P) - float(high_raw[-2])
-            R1 = (2 * P) - float(low_raw[-2])
-            
-            sinal = "⚪ NEUTRO"
-            
-            if len(fechamentos_intra) >= 20:
-                ma9 = float(df_intra['Close'].rolling(window=9).mean().iloc[-1])
-                ma21 = float(df_intra['Close'].rolling(window=21).mean().iloc[-1])
-                ifr = calcular_ifr(df_intra, 14)
-                afastamento = ((ultimo_fechamento - ma9) / ma9) * 100
+    lista_tickers = list(ativos.values())
+    
+    # ⚡ Downloads em bloco otimizados de alta velocidade
+    df_all_intra = yf.download(tickers=lista_tickers, period='6d', interval=tempo_grafico, progress=False)
+    df_all_diario = yf.download(tickers=lista_tickers, period='4d', interval='1d', progress=False)
+    
+    if not df_all_intra.empty and not df_all_diario.empty:
+        for nome, ticker in ativos.items():
+            try:
+                if 'Close' in df_all_intra.columns and ticker in df_all_intra['Close'].columns:
+                    serie_intra = df_all_intra['Close'][ticker].dropna()
+                    fechamentos_intra = serie_intra.to_numpy().flatten()
+                else: continue
+                    
+                if 'High' in df_all_diario.columns and ticker in df_all_diario['High'].columns:
+                    high_raw = df_all_diario['High'][ticker].dropna().to_numpy().flatten()
+                    low_raw = df_all_diario['Low'][ticker].dropna().to_numpy().flatten()
+                    close_raw = df_all_diario['Close'][ticker].dropna().to_numpy().flatten()
+                else: continue
                 
-                if esta_travado:
-                    sinal = "🔒 BLOQUEADO"
-                else:
-                    if ifr >= 70 and max(afastamento, 0) >= 0.35:
-                        sinal = "⚠️ PULLBACK QUEDA"
-                        st.toast(f"⚠️ EXAUSTÃO INSTITUCIONAL: Pullback iminente em {nome}!", icon="⚠️")
-                    elif ifr <= 30 and min(afastamento, 0) <= -0.35:
-                        sinal = "⚠️ PULLBACK ALTA"
-                        st.toast(f"⚠️ EXAUSTÃO INSTITUCIONAL: Pullback iminente em {nome}!", icon="⚠️")
-                    elif ultimo_fechamento > ma9 and ma9 > ma21 and ifr < 65:
-                        sinal = "🟢 COMPRA ATIVA"
-                    elif ultimo_fechamento < ma9 and ma9 < ma21 and ifr > 35:
-                        sinal = "🔴 VENDA ATIVA"
-            
-            vies_pivo = "🔼 ACIMA" if ultimo_fechamento > P else "🔽 ABAIXO"
-            cifr = "R$" if nome in ['Dólar', 'Ibovespa', 'Petrobras', 'Vale'] else "US$"
-            
-            lista_tabela.append({
-                "Ativo": nome, "Preço": f"{cifr} {ultimo_fechamento:,.2f}",
-                "Viés Pivô": vies_pivo, "Status": sinal, 
-                "Pivô Central (P)": f"{cifr} {P:,.2f}", "Sup (S1)": f"{S1:,.2f}", "Res (R1)": f"{R1:,.2f}"
-            })
-        except Exception: continue
+                if len(high_raw) >= 2 and len(fechamentos_intra) >= 5:
+                    maxima_ant = float(high_raw[-2])
+                    minima_ant = float(low_raw[-2])
+                    fechamento_ant = float(close_raw[-2])
+                    
+                    P = (maxima_ant + minima_ant + fechamento_ant) / 3
+                    S1 = (2 * P) - maxima_ant
+                    R1 = (2 * P) - minima_ant
+                    
+                    ultimo_fechamento = float(fechamentos_intra[-1])
+                    sinal = "⚪ NEUTRO"
+                    
+                    if len(fechamentos_intra) >= 15:
+                        ma9 = float(serie_intra.rolling(window=9).mean().iloc[-1])
+                        ma21 = float(serie_intra.rolling(window=21).mean().iloc[-1])
+                        ifr = calcular_ifr(serie_intra, 14)
+                        afastamento = ((ultimo_fechamento - ma9) / ma9) * 100
+                        
+                        if esta_travado:
+                            sinal = "🔒 BLOQUEADO"
+                        else:
+                            if ifr >= 70 and afastamento >= 0.35:
+                                sinal = "⚠️ PULLBACK QUEDA"
+                                st.toast(f"⚠️ EXAUSTÃO INSTITUCIONAL: Pullback iminente em {nome}!", icon="⚠️")
+                            elif ifr <= 30 and afastamento <= -0.35:
+                                sinal = "⚠️ PULLBACK ALTA"
+                                st.toast(f"⚠️ EXAUSTÃO INSTITUCIONAL: Pullback iminente em {nome}!", icon="⚠️")
+                            elif ultimo_fechamento > ma9 and ma9 > ma21 and ifr < 65:
+                                sinal = "🟢 COMPRA ATIVA"
+                            elif ultimo_fechamento < ma9 and ma9 < ma21 and ifr > 35:
+                                sinal = "🔴 VENDA ATIVA"
+                    
+                    vies_pivo = "🔼 ACIMA" if ultimo_fechamento > P else "🔽 ABAIXO"
+                    cifr = "R$" if nome in ['Dólar', 'Ibovespa', 'Petrobras', 'Vale'] else "US$"
+                    
+                    lista_tabela.append({
+                        "Ativo": nome, "Preço": f"{cifr} {ultimo_fechamento:,.2f}",
+                        "Viés Pivô": vies_pivo, "Status": sinal, 
+                        "Pivô Central (P)": f"{cifr} {P:,.2f}", "Sup (S1)": f"{S1:,.2f}", "Res (R1)": f"{R1:,.2f}"
+                    })
+            except Exception: continue
             
     if lista_tabela:
         df_painel = pd.DataFrame(lista_tabela)
