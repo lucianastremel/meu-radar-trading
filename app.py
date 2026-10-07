@@ -8,10 +8,10 @@ import pytz
 st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="centered")
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v27.0")
+st.markdown("### 📡 Radar Multimercados v28.0")
 st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
 
-st.info("🎯 Configuração Avançada v27.0: Filtro de Compressão Lateral + Barreiras R1/S1 Ativas")
+st.info("🛡️ Configuração Avançada v28.0: Filtro de Fluxo Cruzado Intermarket (Trava NVIDIA/BTC)")
 tempo_grafico = '15m'
 
 ativos = {
@@ -61,12 +61,39 @@ with aba_mercado:
     if esta_travado:
         st.warning(f"🔒 **SINAIS BLOQUEADOS OPERACIONALMENTE:** {motivo_trava} (Liberação às {hora_liberacao})")
         
-    lista_tabela = []
     lista_tickers = list(ativos.values())
-    
     df_all_intra = yf.download(tickers=lista_tickers, period='6d', interval=tempo_grafico, progress=False)
     df_all_diario = yf.download(tickers=lista_tickers, period='4d', interval='1d', progress=False)
     
+    # 📡 PRIMEIRO PASSO: MAPEAMENTO PRÉVIO DOS LÍDERES DE FLUXO (NVIDIA E BITCOIN)
+    nvidia_barrada = False
+    bitcoin_abaixo_pivo = False
+    
+    if not df_all_intra.empty and not df_all_diario.empty:
+        # Checagem prévia da NVIDIA
+        if 'Close' in df_all_intra.columns and 'NVDA' in df_all_intra['Close'].columns:
+            nvda_close = float(df_all_intra['Close']['NVDA'].dropna().iloc[-1])
+            if 'High' in df_all_diario.columns and 'NVDA' in df_all_diario['High'].columns:
+                nvda_high_ant = float(df_all_diario['High']['NVDA'].dropna().iloc[-2])
+                nvda_low_ant = float(df_all_diario['Low']['NVDA'].dropna().iloc[-2])
+                nvda_c_ant = float(df_all_diario['Close']['NVDA'].dropna().iloc[-2])
+                nvda_p = (nvda_high_ant + nvda_low_ant + nvda_c_ant) / 3
+                nvda_s1 = (2 * nvda_p) - nvda_high_ant
+                if nvda_close <= (nvda_s1 * 1.0005):
+                    nvidia_barrada = True
+                    
+        # Checagem prévia do Bitcoin
+        if 'Close' in df_all_intra.columns and 'BTC-USD' in df_all_intra['Close'].columns:
+            btc_close = float(df_all_intra['Close']['BTC-USD'].dropna().iloc[-1])
+            if 'High' in df_all_diario.columns and 'BTC-USD' in df_all_diario['High'].columns:
+                btc_high_ant = float(df_all_diario['High']['BTC-USD'].dropna().iloc[-2])
+                btc_low_ant = float(df_all_diario['Low']['BTC-USD'].dropna().iloc[-2])
+                btc_c_ant = float(df_all_diario['Close']['BTC-USD'].dropna().iloc[-2])
+                btc_p = (btc_high_ant + btc_low_ant + btc_c_ant) / 3
+                if btc_close < btc_p:
+                    bitcoin_abaixo_pivo = True
+
+    lista_tabela = []
     if not df_all_intra.empty and not df_all_diario.empty:
         for nome, ticker in ativos.items():
             try:
@@ -109,7 +136,10 @@ with aba_mercado:
                             elif ifr <= 30 and afastamento <= -0.35:
                                 sinal = "⚠️ PULLBACK ALTA"
                             elif ultimo_fechamento > ma9 and ma9 > ma21 and ifr < 65:
-                                if ultimo_fechamento >= (R1 * 0.9995):
+                                # 🚨 FILTRO v28.0: VALIDAÇÃO CRUZADA INTERMARKET DE COMPRA
+                                if nome in ['Nasdaq 100', 'S&P 500', 'Dow Jones'] and (nvidia_barrada or bitcoin_abaixo_pivo):
+                                    sinal = "⏳ BARRADO (Divergência Fluxo NVDA/BTC)"
+                                elif ultimo_fechamento >= (R1 * 0.9995):
                                     sinal = "⏳ BARRADO (Alvo R1)"
                                 else:
                                     sinal = "🟢 COMPRA ATIVA"
@@ -143,4 +173,3 @@ with aba_mercado:
             if "ACIMA" in vies_val: styles[df_painel.columns.get_loc('Viés Pivô')] = 'color: #4caf50; font-weight: bold;'
             elif "ABAIXO" in vies_val: styles[df_painel.columns.get_loc('Viés Pivô')] = 'color: #f44336; font-weight: bold;'
             return styles
-        st.dataframe(df_painel.style.apply(colorir_colunas, axis=1), use_container_width=True, hide_index=True)
