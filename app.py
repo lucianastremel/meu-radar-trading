@@ -5,160 +5,122 @@ import numpy as np
 from datetime import datetime
 import pytz
 
-st.set_page_config(page_title="Radar Institucional", page_icon="📡", layout="centered")
+st.set_page_config(page_title="Radar Quanti-Spread v33.3", page_icon="📡", layout="wide")
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-st.markdown("### 📡 Radar Multimercados v28.2")
-st.write(f"Última atualização (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')}")
+st.markdown("### 📡 Ranger Quant Radar v33.3 - App Sincronizado")
+st.write(f"Última varredura global (Brasília): {datetime.now(fuso_br).strftime('%H:%M:%S')} | Meta: US\$ 200.0/dia")
 
-st.info("🛡️ Configuração Avançada v28.2: Limpeza de Cache de API + Trava de Fluxo Cruzado")
-tempo_grafico = '15m'
+TEMPO_GRAFICO = '15m'
 
-ativos = {
-    'Nasdaq 100': 'NQ=F', 'S&P 500': 'ES=F', 'Dow Jones': 'YM=F',
-    'Ouro Macro': 'GC=F', 'Prata Metal': 'SI=F', 'Petróleo Brent': 'BZ=F', 
-    'NVIDIA': 'NVDA', 'Bitcoin': 'BTC-USD', 'Dólar': 'BRL=X', 
-    'Ibovespa': '^BVSP', 'Petrobras': 'PETR4.SA', 'Vale': 'VALE3.SA'
-}
-
-NOTICIAS_DO_DIA = [
-    {"ID": "ADP Employment Report (Prévia Payroll)", "inicio": "09:12", "fim": "09:20", "impacto": "🔴 ALTO IMPACTO"},
-    {"ID": "PCE Inflation / Nonfarm Payrolls (Dado Oficial)", "inicio": "09:28", "fim": "09:40", "impacto": "🔥 CRÍTICO"},
-    {"ID": "Abertura à Vista NY / ISM Manufacturing PMI", "inicio": "10:28", "fim": "10:42", "impacto": "🔴 ALTO IMPACTO"},
-    {"ID": "Estoques de Petróleo EIA (Gera Volatilidade Brent)", "inicio": "11:28", "fim": "11:38", "impacto": "🟡 MÉDIO IMPACTO"},
-    {"ID": "Janela de Almoço em Wall Street (Falta de Liquidez)", "inicio": "12:28", "fim": "12:45", "impacto": "⏳ RISCO TÉCNICO"}
-]
-
-aba_mercado, aba_noticias = st.tabs(["📊 Sinais e Pivô", "📰 Agenda Macro"])
-
-with aba_noticias:
-    for n in NOTICIAS_DO_DIA:
-        st.warning(f"🕒 {n['inicio']} até {n['fim']} - **{n['ID']}**")
-
-def calcular_ifr(df_close, periods=14):
-    fechamentos = df_close.to_numpy().flatten()
-    if len(fechamentos) < periods: return 50.0
-    deltas = np.diff(fechamentos)
-    gains = np.where(deltas > 0, deltas, 0)
-    losses = np.where(deltas < 0, -deltas, 0)
-    avg_gain = pd.Series(gains).ewm(com=periods-1, adjust=False).mean().iloc[-1]
-    avg_loss = pd.Series(losses).ewm(com=periods-1, adjust=False).mean().iloc[-1]
-    if avg_loss == 0: return 100.0
-    return float(100 - (100 / (1 + (avg_gain / avg_loss))))
-
-def checar_trava_noticias():
-    agora_str = datetime.now(fuso_br).strftime("%H:%M")
-    agora_dt = datetime.strptime(agora_str, "%H:%M")
-    for noticia in NOTICIAS_DO_DIA:
-        inicio_dt = datetime.strptime(noticia["inicio"], "%H:%M")
-        fim_dt = datetime.strptime(noticia["fim"], "%H:%M")
-        if inicio_dt <= agora_dt <= fim_dt:
-            return True, noticia["ID"], noticia["fim"]
-    return False, "", ""
-
-with aba_mercado:
-    esta_travado, motivo_trava, hora_liberacao = checar_trava_noticias()
-    if esta_travado:
-        st.warning(f"🔒 **SINAIS BLOQUEADOS OPERACIONALMENTE:** {motivo_trava} (Liberação às {hora_liberacao})")
-        
-    lista_tickers = list(ativos.values())
-    
-    # ⚡ FORÇA O YAHOO FINANCE A LIMPAR O CACHE OPERACIONAL DA SESSÃO TÉCNICA
-    df_all_intra = yf.download(tickers=lista_tickers, period='6d', interval=tempo_grafico, progress=False, group_by='ticker', auto_adjust=True)
-    df_all_diario = yf.download(tickers=lista_tickers, period='4d', interval='1d', progress=False, group_by='ticker', auto_adjust=True)
-    
-    nvidia_barrada = False
-    bitcoin_abaixo_pivo = False
-    
-    # Extração robusta limpando estruturas hierárquicas vazias
+def puxar_dados_isolados(ticker):
     try:
-        nvda_intra = df_all_intra['NVDA'].dropna(subset=['Close']) if 'NVDA' in df_all_intra.columns.levels[0] else pd.DataFrame()
-        nvda_diario = df_all_diario['NVDA'].dropna(subset=['High']) if 'NVDA' in df_all_diario.columns.levels[0] else pd.DataFrame()
-        if not nvda_intra.empty and not nvda_diario.empty and len(nvda_diario) >= 2:
-            nvda_close = float(nvda_intra['Close'].iloc[-1])
-            nvda_p = (float(nvda_diario['High'].iloc[-2]) + float(nvda_diario['Low'].iloc[-2]) + float(nvda_diario['Close'].iloc[-2])) / 3
-            nvda_s1 = (2 * nvda_p) - float(nvda_diario['High'].iloc[-2])
-            if nvda_close <= (nvda_s1 * 1.0005): nvidia_barrada = True
-
-        btc_intra = df_all_intra['BTC-USD'].dropna(subset=['Close']) if 'BTC-USD' in df_all_intra.columns.levels[0] else pd.DataFrame()
-        btc_diario = df_all_diario['BTC-USD'].dropna(subset=['High']) if 'BTC-USD' in df_all_diario.columns.levels[0] else pd.DataFrame()
-        if not btc_intra.empty and not btc_diario.empty and len(btc_diario) >= 2:
-            btc_close = float(btc_intra['Close'].iloc[-1])
-            btc_p = (float(btc_diario['High'].iloc[-2]) + float(btc_diario['Low'].iloc[-2]) + float(btc_diario['Close'].iloc[-2])) / 3
-            if btc_close < btc_p: bitcoin_abaixo_pivo = True
-    except Exception: pass
-
-    lista_tabela = []
-    for nome, ticker in ativos.items():
-        try:
-            if ticker in df_all_intra.columns.levels[0] and ticker in df_all_diario.columns.levels[0]:
-                df_i = df_all_intra[ticker].dropna(subset=['Close'])
-                df_d = df_all_diario[ticker].dropna(subset=['High', 'Low', 'Close'])
-            else: continue
-            
-            fechamentos_intra = df_i['Close'].to_numpy().flatten()
-            high_raw = df_d['High'].to_numpy().flatten()
-            low_raw = df_d['Low'].to_numpy().flatten()
-            close_raw = df_d['Close'].to_numpy().flatten()
-            
-            if len(high_raw) >= 2 and len(fechamentos_intra) >= 5:
-                P = (float(high_raw[-2]) + float(low_raw[-2]) + float(close_raw[-2])) / 3
-                S1 = (2 * P) - float(high_raw[-2])
-                R1 = (2 * P) - float(low_raw[-2])
-                
-                ultimo_fechamento = float(fechamentos_intra[-1])
-                sinal = "⚪ NEUTRO"
-                
-                if len(fechamentos_intra) >= 15:
-                    ma9 = float(df_i['Close'].rolling(window=9).mean().iloc[-1])
-                    ma21 = float(df_i['Close'].rolling(window=21).mean().iloc[-1])
-                    ifr = calcular_ifr(df_i['Close'], 14)
-                    afastamento = ((ultimo_fechamento - ma9) / ma9) * 100
-                    
-                    if esta_travado:
-                        sinal = "🔒 BLOQUEADO"
-                    elif 47.0 <= ifr <= 53.0:
-                        sinal = "⏳ COMPRESSÃO LATERAL"
-                    else:
-                        if ifr >= 70 and afastamento >= 0.35:
-                            sinal = "⚠️ PULLBACK QUEDA"
-                        elif ifr <= 30 and afastamento <= -0.35:
-                            sinal = "⚠️ PULLBACK ALTA"
-                        elif ultimo_fechamento > ma9 and ma9 > ma21 and ifr < 65:
-                            if nome in ['Nasdaq 100', 'S&P 500', 'Dow Jones'] and (nvidia_barrada or bitcoin_abaixo_pivo):
-                                sinal = "⏳ BARRADO (Divergência NVDA/BTC)"
-                            elif ultimo_fechamento >= (R1 * 0.9995):
-                                sinal = "⏳ BARRADO (Alvo R1)"
-                            else:
-                                sinal = "🟢 COMPRA ATIVA"
-                        elif ultimo_fechamento < ma9 and ma9 < ma21 and ifr > 35:
-                            if ultimo_fechamento <= (S1 * 1.0005):
-                                sinal = "⏳ BARRADO (Alvo S1)"
-                            else:
-                                sinal = "🔴 VENDA ATIVA"
-                
-                vies_pivo = "🔼 ACIMA" if ultimo_fechamento > P else "🔽 ABAIXO"
-                cifr = "R$" if nome in ['Dólar', 'Ibovespa', 'Petrobras', 'Vale'] else "US$"
-                
-                lista_tabela.append({
-                    "Ativo": nome, "Preço": f"{cifr} {ultimo_fechamento:,.2f}",
-                    "Viés Pivô": vies_pivo, "Status": sinal, 
-                    "Pivô Central (P)": f"{cifr} {P:,.2f}", "Sup (S1)": f"{S1:,.2f}", "Res (R1)": f"{R1:,.2f}"
-                })
-        except Exception: continue
+        # Usa Ticker().history para evitar bloqueios de IP nos servidores do Streamlit Cloud
+        t = yf.Ticker(ticker)
+        df_i = t.history(period='5d', interval=TEMPO_GRAFICO)
+        df_d = t.history(period='5d', interval='1d')
         
-    if lista_tabela:
-        df_painel = pd.DataFrame(lista_tabela)
-        def colorir_colunas(row):
-            styles = [''] * len(row)
-            status_val = row['Status']
-            vies_val = row['Viés Pivô']
-            if "COMPRA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status')] = 'background-color: #2e4620; color: white; font-weight: bold;'
-            elif "VENDA ATIVA" in status_val: styles[df_painel.columns.get_loc('Status')] = 'background-color: #5c1d1d; color: white; font-weight: bold;'
-            elif "PULLBACK" in status_val or "⚠️" in status_val: styles[df_painel.columns.get_loc('Status')] = 'background-color: #7d6608; color: #fec107; font-weight: bold;'
-            elif "BARRADO" in status_val or "COMPRESSÃO" in status_val: styles[df_painel.columns.get_loc('Status')] = 'background-color: #2c3e50; color: #b2bec3; font-weight: bold;'
-            elif "BLOQUEADO" in status_val: styles[df_painel.columns.get_loc('Status')] = 'background-color: #4a3e1b; color: #ffeb3b; font-weight: bold;'
-            if "ACIMA" in vies_val: styles[df_painel.columns.get_loc('Viés Pivô')] = 'color: #4caf50; font-weight: bold;'
-            elif "ABAIXO" in vies_val: styles[df_painel.columns.get_loc('Viés Pivô')] = 'color: #f44336; font-weight: bold;'
-            return styles
-        st.dataframe(df_painel.style.apply(colorir_colunas, axis=1), use_container_width=True, hide_index=True)
+        if df_i.empty or df_d.empty: return 0.0, 0.0, 0.0, 0.0, 0.0
+        
+        preco_atual = float(df_i['Close'].dropna().values[-1])
+        retorno = float((preco_atual / float(df_i['Close'].dropna().values[-20]) - 1) * 100)
+        
+        high_ant = float(df_d['High'].dropna().values[-2])
+        low_ant = float(df_d['Low'].dropna().values[-2])
+        close_ant = float(df_d['Close'].dropna().values[-2])
+        
+        P = (high_ant + low_ant + close_ant) / 3
+        S1 = (2 * P) - high_ant
+        R1 = (2 * P) - low_ant
+        
+        return retorno, preco_atual, P, S1, R1
+    except Exception:
+        return 0.0, 0.0, 0.0, 0.0, 0.0
+
+# Execução limpa e achatada das 4 Matrizes
+ret_nq, p_nq, piv_nq, s1_nq, r1_nq = puxar_dados_isolados('NQ=F')
+ret_es, p_es, piv_es, s1_es, r1_es = puxar_dados_isolados('ES=F')
+spread_indices = ret_es - ret_nq
+
+ret_eur, p_eur, piv_eur, s1_eur, r1_eur = puxar_dados_isolados('EURUSD=X')
+ret_gbp, p_gbp, piv_gbp, s1_gbp, r1_gbp = puxar_dados_isolados('GBPUSD=X')
+spread_forex = ret_gbp - ret_eur
+
+ret_wti, p_wti, piv_wti, s1_wti, r1_wti = puxar_dados_isolados('CL=F')
+ret_ng, p_ng, piv_ng, s1_ng, r1_ng = puxar_dados_isolados('NG=F')
+spread_energia = ret_wti - ret_ng
+
+ret_gc, p_gc, piv_gc, s1_gc, r1_gc = puxar_dados_isolados('GC=F')
+ret_si, p_si, piv_si, s1_si, r1_si = puxar_dados_isolados('SI=F')
+spread_metais = ret_gc - ret_si
+
+aba_indices, aba_forex, aba_energia, aba_metais = st.tabs(["📊 Índices", "💱 Forex Majors", "🛢️ Energia", "🪙 Metais"])
+
+def renderizar_boleta_streamlit(operacao, at1, at2, p1, p2, r1, s1, p_p1, p_p2, tipo_mercado):
+    st.success(f"🎯 **GATILHO CIRÚRGICO ATIVO: {operacao}**")
+    if tipo_mercado == "INDICES":
+        sl_c = p1 - abs(p1 - p_p1) * 0.4
+        sl_v = p2 + abs(p2 - p_p2) * 0.4
+    else:
+        sl_c = p1 - (p1 * 0.002)
+        sl_v = p2 + (p2 * 0.002)
+        
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown(f"### 🟢 COMPRA: **{at1}**")
+        st.metric(label="Preço de Entrada", value=f"{p1:.4f}")
+        st.markdown(f"🎯 **TAKE PROFIT (R1):** `{r1:.4f}`")
+        st.markdown(f"🛑 **STOP LOSS:** `{sl_c:.4f}`")
+    with c2:
+        st.markdown(f"### 🔴 VENDA: **{at2}**")
+        st.metric(label="Preço de Entrada", value=f"{p2:.4f}")
+        st.markdown(f"🎯 **TAKE PROFIT (S1):** `{s1:.4f}`")
+        st.markdown(f"🛑 **STOP LOSS:** `{sl_v:.4f}`")
+
+with aba_indices:
+    st.markdown("#### Matriz 1: S&P 500 vs Nasdaq 100")
+    if p_nq > 0 and p_es > 0:
+        st.write(f"Nasdaq 100: **{p_nq:,.2f}** ({ret_nq:+.2f}%) | S&P 500: **{p_es:,.2f}** ({ret_es:+.2f}%) | Spread: **{spread_indices:+.2f}%**")
+        if spread_indices > 0.35:
+            renderizar_boleta_streamlit("ARBITRAGEM ÍNDICES", "S&P 500", "Nasdaq 100", p_es, p_nq, r1_es, s1_nq, piv_es, piv_nq, "INDICES")
+        elif spread_indices < -0.35:
+            renderizar_boleta_streamlit("ARBITRAGEM ÍNDICES", "Nasdaq 100", "S&P 500", p_nq, p_es, r1_nq, s1_es, piv_nq, piv_es, "INDICES")
+        else:
+            st.info(f"⏳ **Em Equilíbrio.** Alvos -> NQ R1: {r1_nq:,.1f} S1: {s1_nq:,.1f} | ES R1: {r1_es:,.1f} S1: {s1_es:,.1f}")
+    else: st.error("Aguardando resposta do servidor de Chicago...")
+
+with aba_forex:
+    st.markdown("#### Matriz 2: GBP/USD vs EUR/USD")
+    if p_eur > 0 and p_gbp > 0:
+        st.write(f"EUR/USD: **{p_eur:.4f}** ({ret_eur:+.2f}%) | GBP/USD: **{p_gbp:.4f}** ({ret_gbp:+.2f}%) | Spread: **{spread_forex:+.2f}%**")
+        if spread_forex > 0.12:
+            renderizar_boleta_streamlit("ARBITRAGEM CÂMBIO", "GBP/USD", "EUR/USD", p_gbp, p_eur, r1_gbp, s1_eur, piv_gbp, piv_eur, "FOREX")
+        elif spread_forex < -0.12:
+            renderizar_boleta_streamlit("ARBITRAGEM CÂMBIO", "EUR/USD", "GBP/USD", p_eur, p_gbp, r1_eur, s1_gbp, piv_eur, piv_gbp, "FOREX")
+        else:
+            st.info(f"⏳ **Em Equilíbrio.** Alvos -> EUR R1: {r1_eur:.4f} S1: {s1_eur:.4f} | GBP R1: {r1_gbp:.4f} S1: {s1_gbp:.4f}")
+    else: st.error("Aguardando resposta de Londres...")
+
+with aba_energia:
+    st.markdown("#### Matriz 3: Petróleo WTI vs Gás Natural")
+    if p_wti > 0 and p_ng > 0:
+        st.write(f"Petróleo WTI: **US\$ {p_wti:,.2f}** ({ret_wti:+.2f}%) | Gás Natural: **US\$ {p_ng:,.3f}** ({ret_ng:+.2f}%) | Spread: **{spread_energia:+.2f}%**")
+        if spread_energia > 1.20:
+            renderizar_boleta_streamlit("SPREAD ENERGIA", "Petróleo WTI", "Gás Natural", p_wti, p_ng, r1_wti, s1_wti, piv_wti, piv_ng, "ENERGIA")
+        elif spread_energia < -1.20:
+            renderizar_boleta_streamlit("SPREAD ENERGIA", "Gás Natural", "Petróleo WTI", p_ng, p_wti, r1_ng, s1_wti, piv_ng, piv_wti, "ENERGIA")
+        else:
+            st.info(f"⏳ **Em Equilíbrio.** Alvos -> WTI R1: {r1_wti:,.2f} S1: {s1_wti:,.2f} | NG R1: {r1_ng:,.3f} S1: {s1_ng:,.3f}")
+    else: st.error("Aguardando resposta do mercado de energia...")
+
+with aba_metais:
+    st.markdown("#### Matriz 4: Ouro vs Prata")
+    if p_gc > 0 and p_si > 0:
+        st.write(f"Ouro: **US\$ {p_gc:,.2f}** ({ret_gc:+.2f}%) | Prata: **US\$ {p_si:,.2f}** ({ret_si:+.2f}%) | Spread: **{spread_metais:+.2f}%**")
+        if spread_metais > 0.60:
+            renderizar_boleta_streamlit("SPREAD METAIS", "Ouro Macro", "Prata Metal", p_gc, p_si, r1_gc, s1_si, piv_gc, piv_si, "METAIS")
+        elif spread_metais < -0.60:
+            renderizar_boleta_streamlit("SPREAD METAIS", "Prata Metal", "Ouro Macro", p_si, p_gc, r1_si, s1_gc, piv_si, piv_gc, "METAIS")
+        else:
+            st.info(f"⏳ **Em Equilíbrio.** Alvos -> Ouro R1: {r1_gc:,.1f} S1: {s1_gc:,.1f} | Prata R1: {r1_si:,.2f} S1: {s1_si:,.2f}")
+    else: st.error("Aguardando resposta do mercado de metais...")
